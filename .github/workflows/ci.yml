@@ -1,0 +1,30 @@
+name: App CI
+
+# Run automatically for pushes and pull requests, or manually from GitHub.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test API
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      # This app has no external dependencies, so no install step is needed.
+      - name: Run HTTP tests
+        run: npm test

@@ -1,0 +1,14 @@
+{
+  "name": "devops-learning-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A tiny API for learning DevOps and observability",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  }
+}
