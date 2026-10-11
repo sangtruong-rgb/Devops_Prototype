@@ -30,14 +30,36 @@ jobs:
         run: npm test
 
   build:
-    name: Build container image
+    name: Build and publish image
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 10
+
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      IMAGE: ghcr.io/sangtruong-rgb/devops-app
 
     steps:
       - name: Check out the repository
         uses: actions/checkout@v7
 
       - name: Build image
-        run: docker build -f dockerfile -t devops-app:ci .
+        run: |
+          docker build -f dockerfile \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            -t "$IMAGE:$GITHUB_SHA" .
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: docker push "$IMAGE:$GITHUB_SHA"
