@@ -28,3 +28,16 @@ jobs:
       # This app has no external dependencies, so no install step is needed.
       - name: Run HTTP tests
         run: npm test
+
+  build:
+    name: Build container image
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Build image
+        run: docker build -f dockerfile -t devops-app:ci .
