@@ -843,6 +843,8 @@ git push
 
 ## 15. Step 12 — Add linting before the HTTP tests
 
+This section records the initial combined lint-and-test job. Section 16 records the later split into two jobs.
+
 On 12 October, we added ESLint so CI checks for code mistakes before testing HTTP behavior. Linting catches issues such as undefined names and unused variables; the HTTP tests check the application's responses. The app has no external runtime dependencies, but the development checks now need packages installed with npm.
 
 The packages were installed as development dependencies:
@@ -911,3 +913,29 @@ npm test
 ```
 
 Local verification passed: a clean `npm ci`, `npm run lint`, and all five HTTP tests. The workflow YAML also parsed successfully. The captured run and HTTP files in the evidence directory predate this addition. A new GitHub run after committing and pushing the lint changes will provide CI evidence for the extended workflow.
+
+## 16. Step 13 — Give lint and tests separate jobs
+
+We split the checks so the GitHub Actions view displays **Lint API** and **Test API** separately. A step is one operation inside a job; a job is a group of steps with its own runner and result.
+
+The `lint` job checks out the code, sets up Node.js 24, runs `npm ci`, and executes `npm run lint`. The `test` job has the same setup and executes `npm test`. Neither depends on the other, so GitHub can run them in parallel. Each installs dependencies because files and installed packages are not automatically shared between jobs.
+
+The image build now depends on both results:
+
+```yaml
+  build:
+    name: Build and publish image
+    needs: [lint, test]
+```
+
+The current dependency graph is:
+
+```text
+Lint API ──┐
+           ├── both pass → Build and publish image
+Test API ──┘
+```
+
+If either job fails, the build job is skipped. GitHub's `needs` field accepts a list of prerequisite job IDs. [GitHub job dependencies](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-jobs)
+
+This change updates the workflow structure. A new GitHub run after pushing the change will show the separate job results.

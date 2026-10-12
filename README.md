@@ -64,17 +64,17 @@ ESLint and its configuration packages are development dependencies. The runtime 
 
 The workflow in `.github/workflows/ci.yml` runs on every push and pull request. It can also be started manually from the repository's **Actions** tab once the workflow is on the default branch.
 
-Its `test` job runs on a GitHub-hosted Ubuntu runner and performs five steps:
+The workflow has three jobs:
 
-1. Check out the repository so the runner has our code.
-2. Set up Node.js 24.
-3. Install development dependencies with `npm ci`.
-4. Run `npm run lint`.
-5. Run `npm test`.
+| Job | What it does | Prerequisites |
+| --- | --- | --- |
+| `lint` / **Lint API** | Runs `npm run lint` | None |
+| `test` / **Test API** | Runs `npm test` | None |
+| `build` / **Build and publish image** | Builds AMD64 and ARM64 images; publishes to GHCR on pushes to `master` | Both lint and tests must pass |
 
-Lint or test failures make the job fail. The build job requires this job to succeed before it builds AMD64 and ARM64 images and publishes them to GHCR on pushes to `master`.
+Lint and tests can run in parallel on separate GitHub-hosted Ubuntu runners, with their own results in the Actions view. Each checks out the repository, sets up Node.js 24, and installs development dependencies with `npm ci` before running its check. A failure in either job blocks the build job through `needs: [lint, test]`.
 
-To see a real workflow run, commit and push these files to a GitHub repository, open its **Actions** tab, and select **App CI**. Open **Lint and test API** to see the lint and test output. Save a capture of that run for the assignment.
+To see a real workflow run, commit and push these files to a GitHub repository, open its **Actions** tab, and select **App CI**. Open **Lint API** or **Test API** to see the corresponding output. Save a capture of that run for the assignment.
 
 ## Files
 
