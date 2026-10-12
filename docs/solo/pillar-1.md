@@ -802,13 +802,13 @@ The evidence deliberately refers to the tested application commit `afc52c1`. Com
 | Non-root configuration | Container inspection records user `65532` |
 | App secrets | None required; only package configuration and source are copied |
 | Registry credentials | Workflow token used by the login step, outside the image |
-| Test gate | `needs: test` prevents the build job from running after failed tests |
+| Check gate | `needs: [lint, test]` prevents the build job from running after failed lint or tests |
 | Publishing scope | Package-write permission is limited to the build job; upload is restricted to pushes to `master` |
 | App health | `/health` tested; no Docker HEALTHCHECK or Kubernetes probes have been added yet |
 | Architecture | Both variants built and published; only AMD64 runtime tested locally |
 | Build metadata | Attestation manifests recorded; SBOM generation and signed attestation verification not demonstrated |
-| Vulnerability scanning | No scan gate added; optional implementation under the assignment |
-| Dependency/base pinning | Action major-version tags and a base-image tag are used; they are not pinned to immutable digests or commit SHAs |
+| Vulnerability scanning | Added a Trivy gate for both platform images in Section 17; the original CI captures predate it |
+| Dependency/base pinning | Existing GitHub/Docker actions and base image use version tags; the new Trivy and report-upload actions use full commit SHAs |
 
 This is a learning implementation. It demonstrates the required app/image/CI path and some security practices, rather than establishing a complete production security policy. The assignment's broader research topics, including scanning tools and supply-chain features, still need their own source-grounded treatment in the combined findings.
 
@@ -939,3 +939,97 @@ Test API ──┘
 If either job fails, the build job is skipped. GitHub's `needs` field accepts a list of prerequisite job IDs. [GitHub job dependencies](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-jobs)
 
 This change updates the workflow structure. A new GitHub run after pushing the change will show the separate job results.
+
+## 17. Step 14 — Scan both images before publishing
+
+On 12 October, we added a Trivy vulnerability gate to the build job. The goal is to prevent publication of an image containing known high-severity issues covered by the policy. Registry authentication controls who may push an image; scanning checks its contents against a vulnerability database.
+
+The build job is now named **Build, scan, and publish image** and has a 20-minute timeout to allow for downloading the scanner/database and examining both platforms. Its sequence is:
+
+```text
+Lint + tests pass
+       ↓
+Build AMD64 locally + build ARM64 locally
+       ↓
+Scan AMD64 → scan ARM64
+       ↓ both pass
+Push the scanned platform images → create common image index
+```
+
+### Build images without uploading them
+
+Each platform uses `docker/build-push-action` with `load: true` and `push: false`. The tags are:
+
+```text
+ghcr.io/sangtruong-rgb/devops-app:<commit-sha>-amd64
+ghcr.io/sangtruong-rgb/devops-app:<commit-sha>-arm64
+```
+
+They are loaded into the same runner's Docker engine so Trivy can inspect their files. Scanning ARM64 image contents does not execute the ARM64 app and does not replace a runtime test on an ARM laptop.
+
+### Scan policy
+
+Both scans use `aquasecurity/trivy-action`, pinned to commit `ed142fd0673e97e23eac54620cfb913e5ce36c25` (release `v0.36.0`). The installed scanner version is `v0.75.0`. Important inputs are:
+
+```yaml
+scanners: 'vuln'
+vuln-type: 'os,library'
+severity: 'HIGH,CRITICAL'
+ignore-unfixed: true
+exit-code: '1'
+format: 'json'
+```
+
+The scanner uses the local Docker image through `TRIVY_IMAGE_SRC: docker`. `exit-code: '1'` fails the step if it finds vulnerabilities matching the policy. `ignore-unfixed: true` means only findings with an available fix block this learning pipeline. LOW/MEDIUM findings and findings without fixes are outside the gate's blocking policy; a passing gate therefore does not mean no vulnerabilities exist. An error downloading the database or examining the image also fails the step.
+
+This checks known vulnerabilities in OS packages and application libraries. It does not enable secret scanning, SBOM generation, or signature verification. [Trivy action documentation](https://github.com/aquasecurity/trivy-action), [Trivy image command options](https://trivy.dev/docs/latest/references/configuration/cli/trivy_image/)
+
+### Preserve reports when a scan fails
+
+The reports are written under the runner's temporary directory as `trivy-amd64.json` and `trivy-arm64.json`. An artifact-upload step uses `if: always()` so available reports are retained even on failure. If AMD64 scanning fails first, ARM64 scanning is skipped, so only the available report is uploaded. An early infrastructure failure may produce no report, and its details must be read in the failed step's logs.
+
+Open the run's **Artifacts** section and download `trivy-reports-<commit-sha>`. The artifact is retained for 14 days. The upload action is pinned to commit `cf430e030ddbb5b0abf93d22962f4752f3646cd9` (release `v7.0.2`). The upload step's `always()` condition does not enable publishing after a failure: login and publication still require normal successful completion of the earlier steps.
+
+### Publish the actual scanned images
+
+Only after both scans pass does the workflow authenticate to GHCR and run:
+
+```sh
+docker push "${IMAGE}:${GITHUB_SHA}-amd64"
+docker push "${IMAGE}:${GITHUB_SHA}-arm64"
+docker buildx imagetools create \
+  --tag "${IMAGE}:${GITHUB_SHA}" \
+  "${IMAGE}:${GITHUB_SHA}-amd64" \
+  "${IMAGE}:${GITHUB_SHA}-arm64"
+```
+
+The platform tags point to the scanned images. `imagetools create` combines their registry manifests into the usual common commit tag. There is no rebuild between scanning and publication. Upload remains restricted to pushes to `master`. [Docker image index creation](https://docs.docker.com/reference/cli/docker/buildx/imagetools/create/)
+
+This flow uses locally loaded images. Preservation of automatic BuildKit attestations depends on the exporter and image store, so the scan gate does not rely on their preservation. The old captured `attestation-manifest` entries belong to the older workflow. Additional SBOM generation and signed build provenance are separate work.
+
+The original evidence files predate this gate. The new workflow needs a fresh GitHub run after committing and pushing, followed by saving its scan reports as additional solo evidence.
+
+### Local validation reports
+
+We built both platform images locally from the current Dockerfile and scanned them with Trivy `v0.75.0` using the same vulnerability policy as CI. Both scans returned exit code 0 and reported no findings matching the blocking policy. Report metadata confirms that the AMD64 report covers `amd64` and the ARM64 report covers `arm64`.
+
+- [Local AMD64 report](../evidence/solo/pillar-1/trivy-local-amd64.json), generated on 12 October at 11:16:25 Vietnam time.
+- [Local ARM64 report](../evidence/solo/pillar-1/trivy-local-arm64.json), generated on 12 October at 11:16:58 Vietnam time.
+
+These are scans of local validation images named `devops-app:security-check-amd64` and `devops-app:security-check-arm64`. They are not reports from a GitHub run or from the older captured registry tag. The vulnerability gate does not prove ARM64 runtime behavior; it examines the image's contents.
+
+We also scanned the old official `alpine:3.18.0` image as a negative control without running a container from it. The same policy produced 9 blocking package findings, including a CRITICAL busybox finding with an available fix, and the scanner returned exit code 1 as required. The [negative-control report](../evidence/solo/pillar-1/trivy-control-alpine-3.18.0.json) records the findings. It is not a scan of our app.
+
+The equivalent scanner commands are shown below for replay on a machine with Trivy installed and access to its Docker engine:
+
+```sh
+trivy image --image-src docker --scanners vuln --pkg-types os,library \
+  --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+  --format json --output trivy-amd64.json devops-app:security-check-amd64
+
+trivy image --image-src docker --scanners vuln --pkg-types os,library \
+  --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+  --format json --output trivy-arm64.json devops-app:security-check-arm64
+```
+
+Local command execution needed Docker Desktop's CLI helper directory on PATH and its user socket at `unix:///Users/sang.truong/.docker/run/docker.sock`. These are local environment settings, not settings needed on GitHub's Ubuntu runners. The workflow was validated with `actionlint v1.7.12`. Publication of the new pipeline is still pending a GitHub run after the changes are pushed.

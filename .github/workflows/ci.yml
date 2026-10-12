@@ -53,10 +53,10 @@ jobs:
         run: npm test
 
   build:
-    name: Build and publish image
+    name: Build, scan, and publish image
     needs: [lint, test]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
 
     permissions:
       contents: read
@@ -75,21 +75,86 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
+      # Load each platform locally so Trivy scans the exact images we will push.
+      - name: Build AMD64 image for scanning
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ env.IMAGE }}:${{ github.sha }}-amd64
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
+      - name: Build ARM64 image for scanning
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./dockerfile
+          platforms: linux/arm64
+          load: true
+          push: false
+          tags: ${{ env.IMAGE }}:${{ github.sha }}-arm64
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
+      - name: Scan AMD64 image with Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_IMAGE_SRC: docker
+        with:
+          version: 'v0.75.0'
+          scan-type: 'image'
+          image-ref: ${{ env.IMAGE }}:${{ github.sha }}-amd64
+          scanners: 'vuln'
+          vuln-type: 'os,library'
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true
+          exit-code: '1'
+          format: 'json'
+          output: ${{ runner.temp }}/trivy-amd64.json
+
+      - name: Scan ARM64 image with Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_IMAGE_SRC: docker
+        with:
+          skip-setup-trivy: true
+          scan-type: 'image'
+          image-ref: ${{ env.IMAGE }}:${{ github.sha }}-arm64
+          scanners: 'vuln'
+          vuln-type: 'os,library'
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true
+          exit-code: '1'
+          format: 'json'
+          output: ${{ runner.temp }}/trivy-arm64.json
+
+      - name: Upload vulnerability reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-reports-${{ github.sha }}
+          path: ${{ runner.temp }}/trivy-*.json
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Log in to GHCR
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and publish both architectures
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-          tags: ${{ env.IMAGE }}:${{ github.sha }}
-          labels: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+      - name: Publish scanned images and multi-platform index
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          docker push "${IMAGE}:${GITHUB_SHA}-amd64"
+          docker push "${IMAGE}:${GITHUB_SHA}-arm64"
+          docker buildx imagetools create \
+            --tag "${IMAGE}:${GITHUB_SHA}" \
+            "${IMAGE}:${GITHUB_SHA}-amd64" \
+            "${IMAGE}:${GITHUB_SHA}-arm64"
