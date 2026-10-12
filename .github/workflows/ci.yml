@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   test:
-    name: Test API
+    name: Lint and test API
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -25,7 +25,12 @@ jobs:
           node-version: '24'
           package-manager-cache: false
 
-      # This app has no external dependencies, so no install step is needed.
+      - name: Install development dependencies
+        run: npm ci
+
+      - name: Lint JavaScript
+        run: npm run lint
+
       - name: Run HTTP tests
         run: npm test
 

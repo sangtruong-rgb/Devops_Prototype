@@ -4,7 +4,11 @@ A tiny Node.js API for the Group B DevOps assignment. The application is deliber
 
 ## Run locally
 
-Requires Node.js 22 or newer. There are no external dependencies, so no install step is needed.
+The application requires Node.js 22 or newer and uses only built-in modules. Use Node.js 24 for development, matching CI. Install the development tools from the lockfile:
+
+```sh
+npm ci
+```
 
 ```sh
 npm start
@@ -46,25 +50,38 @@ npm test
 
 Tests make real HTTP requests to temporary local servers. They check the default and configured greetings, health response, unknown routes, and unsupported methods. GitHub Actions runs the same command.
 
+## Lint
+
+```sh
+npm run lint
+```
+
+ESLint checks the application, tests, and its own configuration with the recommended JavaScript rules and Node.js globals. It catches issues such as unused variables and undefined names. Warnings also cause this command to fail.
+
+ESLint and its configuration packages are development dependencies. The runtime image copies only `package.json` and `src/`, so it does not include the development tools or `node_modules`.
+
 ## GitHub Actions
 
 The workflow in `.github/workflows/ci.yml` runs on every push and pull request. It can also be started manually from the repository's **Actions** tab once the workflow is on the default branch.
 
-Its `test` job runs on a GitHub-hosted Ubuntu runner and performs three steps:
+Its `test` job runs on a GitHub-hosted Ubuntu runner and performs five steps:
 
 1. Check out the repository so the runner has our code.
 2. Set up Node.js 24.
-3. Run `npm test`. A failing test makes the job fail.
+3. Install development dependencies with `npm ci`.
+4. Run `npm run lint`.
+5. Run `npm test`.
 
-No dependency installation or caching is needed because this app uses only Node.js built-in modules.
+Lint or test failures make the job fail. The build job requires this job to succeed before it builds AMD64 and ARM64 images and publishes them to GHCR on pushes to `master`.
 
-To see a real workflow run, commit and push these files to a GitHub repository, open its **Actions** tab, and select **App CI**. Open **Test API** to see the test output. Save a capture of that run for the assignment.
+To see a real workflow run, commit and push these files to a GitHub repository, open its **Actions** tab, and select **App CI**. Open **Lint and test API** to see the lint and test output. Save a capture of that run for the assignment.
 
 ## Files
 
 - `src/server.js`: routes, configuration, and server startup.
 - `test/server.test.js`: HTTP tests using Node's built-in test runner.
 - `package.json`: commands for running and testing the app.
-- `.github/workflows/ci.yml`: GitHub Actions test workflow.
+- `eslint.config.js`: recommended JavaScript lint rules for Node.js.
+- `.github/workflows/ci.yml`: lint, tests, image builds, and GHCR publishing.
 
-The app and test workflow are implemented. Container image builds, publishing to a registry, Kubernetes, and metrics will be added as we work through those topics.
+The app, lint and test checks, and multi-platform image publishing are implemented. Kubernetes and metrics will be added as we work through those topics.
