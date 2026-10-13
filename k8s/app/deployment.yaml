@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devops-app
+  namespace: devops-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: devops-app
+  template:
+    metadata:
+      labels:
+        app: devops-app
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/sangtruong-rgb/devops-app:f61db98cb9f8b288825a717958358ffde3bce39e
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: devops-app-config

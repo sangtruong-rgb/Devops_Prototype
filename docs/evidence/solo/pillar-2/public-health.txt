@@ -1,0 +1,10 @@
+HTTP/2 200 
+date: Mon, 12 Oct 2026 07:22:25 GMT
+content-type: application/json
+cf-ray: a4945a71498008c0-HKG
+cf-cache-status: DYNAMIC
+server: cloudflare
+x-robots-tag: none
+x-robots-tag: none
+
+{"status":"ok"}

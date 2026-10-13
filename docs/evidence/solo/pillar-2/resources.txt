@@ -1,0 +1,12 @@
+NAME                              READY   STATUS    RESTARTS   AGE
+pod/devops-app-6b9dfd75f7-mrgkx   1/1     Running   0          28m
+
+NAME                 TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
+service/devops-app   ClusterIP   10.96.205.43   <none>        80/TCP    44m
+
+NAME                         READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/devops-app   1/1     1            1           58m
+
+NAME                                    DESIRED   CURRENT   READY   AGE
+replicaset.apps/devops-app-6b9dfd75f7   1         1         1       28m
+replicaset.apps/devops-app-c65c876d5    0         0         0       58m

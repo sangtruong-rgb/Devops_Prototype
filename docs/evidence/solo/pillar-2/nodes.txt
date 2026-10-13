@@ -1,0 +1,2 @@
+NAME                        STATUS   ROLES           AGE    VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE                       KERNEL-VERSION            CONTAINER-RUNTIME
+devops-solo-control-plane   Ready    control-plane   145m   v1.37.0   172.18.0.2    <none>        Debian GNU/Linux 13 (trixie)   7.0.14-linuxkit (amd64)   containerd://2.3.4
