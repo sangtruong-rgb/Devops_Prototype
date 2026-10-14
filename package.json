@@ -5,7 +5,7 @@
   "description": "A tiny API for learning DevOps and observability",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": "^22 || ^24 || >=26"
   },
   "scripts": {
     "start": "node src/server.js",
@@ -16,5 +16,8 @@
     "@eslint/js": "^10.0.1",
     "eslint": "^10.12.0",
     "globals": "^17.13.0"
+  },
+  "dependencies": {
+    "@prometheus-io/client": "0.16.1"
   }
 }

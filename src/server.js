@@ -1,19 +1,32 @@
 import http from 'node:http';
 import { pathToFileURL } from 'node:url';
+import { createMetrics } from './metrics.js';
 
 export function createServer({ greeting = 'Hello from the DevOps app!' } = {}) {
-  return http.createServer((request, response) => {
+  const metrics = createMetrics();
+  return http.createServer(async (request, response) => {
     const pathname = new URL(request.url, 'http://localhost').pathname;
+    metrics.observe(request, response, pathname);
     let status = 200;
     let body;
 
-    if (pathname !== '/' && pathname !== '/health') {
+    if (pathname !== '/' && pathname !== '/health' && pathname !== '/metrics') {
       status = 404;
       body = { error: 'Not found' };
     } else if (request.method !== 'GET') {
       status = 405;
       response.setHeader('Allow', 'GET');
       body = { error: 'Method not allowed' };
+    } else if (pathname === '/metrics') {
+      try {
+        const output = await metrics.registry.metrics();
+        response.writeHead(200, { 'Content-Type': metrics.registry.contentType });
+        response.end(output);
+      } catch {
+        response.writeHead(500, { 'Content-Type': 'text/plain' });
+        response.end('Metrics collection failed\n');
+      }
+      return;
     } else if (pathname === '/health') {
       body = { status: 'ok' };
     } else {

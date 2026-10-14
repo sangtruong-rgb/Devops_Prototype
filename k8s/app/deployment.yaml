@@ -17,7 +17,17 @@ spec:
         - name: api
           image: ghcr.io/sangtruong-rgb/devops-app:f61db98cb9f8b288825a717958358ffde3bce39e
           ports:
-            - containerPort: 3000
+            - name: http
+              containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
           envFrom:
             - configMapRef:
                 name: devops-app-config

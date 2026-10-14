@@ -1,0 +1,9 @@
+.git
+node_modules
+docs
+test
+k8s
+kind
+.env
+.env.*
+*.log

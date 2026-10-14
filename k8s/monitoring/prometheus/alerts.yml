@@ -1,0 +1,17 @@
+groups:
+  - name: devops-app
+    rules:
+      - alert: DevopsAppScrapeDown
+        expr: up{job="devops-app"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Cannot scrape {{ $labels.pod }} for 2 minutes'
+      - alert: DevopsAppNoTargets
+        expr: absent(up{job="devops-app"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: No application targets discovered for 2 minutes

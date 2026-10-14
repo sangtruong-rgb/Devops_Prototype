@@ -49,3 +49,39 @@ test('POST / is rejected with the allowed method', async (t) => {
   assert.equal(response.headers.get('allow'), 'GET');
   assert.deepEqual(await response.json(), { error: 'Method not allowed' });
 });
+
+test('metrics expose request counts, duration and runtime metrics without raw URLs', async (t) => {
+  const url = await startServer(t);
+  for (const path of ['/?token=private', '/missing-a', '/missing-b', '/health', '/metrics']) {
+    await (await fetch(`${url}${path}`)).text();
+  }
+  await (await fetch(url, { method: 'POST' })).text();
+  const response = await fetch(`${url}/metrics`);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /text\/plain/);
+  const output = await response.text();
+  assert.match(output, /http_requests_total\{method="GET",route="\/",status_code="200"\} 1/);
+  assert.match(output, /http_requests_total\{method="GET",route="unmatched",status_code="404"\} 2/);
+  assert.match(output, /http_requests_total\{method="POST",route="\/",status_code="405"\} 1/);
+  assert.match(output, /http_request_duration_seconds_count\{method="GET",route="\/",status_code="200"\} 1/);
+  assert.match(output, /http_request_duration_seconds_bucket\{le="\+Inf",method="GET",route="\/",status_code="200"\} 1/);
+  assert.match(output, /process_cpu_seconds_total/);
+  assert.match(output, /nodejs_heap_size_used_bytes/);
+  assert.doesNotMatch(output, /private|missing-a|missing-b|route="\/health"|route="\/metrics"/);
+});
+
+test('metrics registries are isolated between server instances', async (t) => {
+  const first = await startServer(t);
+  const second = await startServer(t);
+  await (await fetch(first)).text();
+  const output = await (await fetch(`${second}/metrics`)).text();
+  assert.doesNotMatch(output, /^http_requests_total\{/m);
+});
+
+test('POST /metrics is rejected', async (t) => {
+  const url = await startServer(t);
+  const response = await fetch(`${url}/metrics`, { method: 'POST' });
+  assert.equal(response.status, 405);
+  assert.equal(response.headers.get('allow'), 'GET');
+  assert.deepEqual(await response.json(), { error: 'Method not allowed' });
+});

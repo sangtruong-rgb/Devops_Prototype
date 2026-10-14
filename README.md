@@ -4,7 +4,7 @@ A tiny Node.js API for the Group B DevOps assignment. The application is deliber
 
 ## Run locally
 
-The application requires Node.js 22 or newer and uses only built-in modules. Use Node.js 24 for development, matching CI. Install the development tools from the lockfile:
+Use Node.js 24 for development, matching CI and the container runtime. Supported versions are Node.js 22, 24, and 26 or newer. The HTTP server uses built-in modules; `@prometheus-io/client` provides metrics. Install dependencies from the lockfile:
 
 ```sh
 npm ci
@@ -22,6 +22,9 @@ curl http://localhost:3000/
 
 curl http://localhost:3000/health
 # {"status":"ok"}
+
+curl http://localhost:3000/metrics
+# Prometheus text exposition: HTTP and Node.js runtime metrics
 ```
 
 Stop the app with Ctrl+C.
@@ -48,7 +51,7 @@ Run the curl command in another terminal. The greeting is kept outside the code 
 npm test
 ```
 
-Tests make real HTTP requests to temporary local servers. They check the default and configured greetings, health response, unknown routes, and unsupported methods. GitHub Actions runs the same command.
+Tests make real HTTP requests to temporary local servers. They check greetings, health, unknown routes, unsupported methods, metric counts and histograms, bounded route labels, and registry isolation. GitHub Actions runs the same command.
 
 ## Lint
 
@@ -58,7 +61,7 @@ npm run lint
 
 ESLint checks the application, tests, and its own configuration with the recommended JavaScript rules and Node.js globals. It catches issues such as unused variables and undefined names. Warnings also cause this command to fail.
 
-ESLint and its configuration packages are development dependencies. The runtime image copies only `package.json` and `src/`, so it does not include the development tools or `node_modules`.
+ESLint and its configuration packages are development dependencies. A Docker build stage installs production dependencies with `npm ci --omit=dev`; the distroless runtime receives those modules and the application, without the development tools.
 
 ## GitHub Actions
 
@@ -69,10 +72,10 @@ The workflow has three jobs:
 | Job | What it does | Prerequisites |
 | --- | --- | --- |
 | `lint` / **Lint API** | Runs `npm run lint` | None |
-| `test` / **Test API** | Runs `npm test` | None |
+| `test` / **Test API** | Runs `npm test` | Lint must pass |
 | `build` / **Build, scan, and publish image** | Builds and scans AMD64 and ARM64 images; publishes the scanned images to GHCR on pushes to `master` | Lint, tests, and both image scans must pass |
 
-Lint and tests can run in parallel on separate GitHub-hosted Ubuntu runners, with their own results in the Actions view. Each checks out the repository, sets up Node.js 24, and installs development dependencies with `npm ci` before running its check. A failure in either job blocks the build job through `needs: [lint, test]`.
+The jobs run in sequence: **Lint API → Test API → Build, scan, and publish image**. The test job uses `needs: lint`, and the build job uses `needs: test`. If lint fails, tests and build are skipped; if tests fail, build is skipped. Each check runs on its own GitHub-hosted Ubuntu runner, checks out the repository, sets up Node.js 24, and installs dependencies with `npm ci`.
 
 To see a real workflow run, commit and push these files to a GitHub repository, open its **Actions** tab, and select **App CI**. Open **Lint API** or **Test API** to see the corresponding output. Save a capture of that run for the assignment.
 
@@ -94,4 +97,12 @@ The Trivy and report-upload actions are pinned to full commit SHAs, and the scan
 - `eslint.config.js`: recommended JavaScript lint rules for Node.js.
 - `.github/workflows/ci.yml`: lint, tests, image builds, vulnerability scans, and GHCR publishing.
 
-The app, lint and test checks, image vulnerability gate, and multi-platform image publishing are implemented. Kubernetes and metrics will be added as we work through those topics.
+## Prometheus and Grafana
+
+The app exposes `GET /metrics`. Prometheus discovers and scrapes each application Pod every 15 seconds. Grafana loads its Prometheus datasource and the **DevOps API Overview** dashboard from versioned files.
+
+- `src/metrics.js`: request counter, duration histogram, and Node.js runtime metrics.
+- `k8s/monitoring/`: Prometheus, scoped discovery RBAC, Grafana, dashboard, and scrape alerts.
+- [Pillar 3 setup and design](docs/solo/pillar-3.md): architecture, deployment, PromQL, traffic generation, troubleshooting, and demo storage limits.
+
+Build an app image containing `/metrics` before deploying monitoring: the historical image currently pinned in `k8s/app/deployment.yaml` does not contain this change. Follow the linked walkthrough for either a local kind image or a newly published CI image.
